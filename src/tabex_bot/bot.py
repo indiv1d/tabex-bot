@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -30,6 +30,8 @@ from tabex_bot.schedule import build_tabex_schedule
 CommandExecutor = Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[None]]
 
 BTN_TODAY = "Сегодня"
+BTN_YESTERDAY = "Вчера"
+BTN_TOMORROW = "Завтра"
 BTN_TAKEN = "Отметить приём"
 BTN_MISSED = "Пропущенные"
 BTN_STATS = "Статистика"
@@ -40,9 +42,10 @@ BTN_CANCEL = "Удалить план"
 def _commands_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(BTN_TODAY), KeyboardButton(BTN_TAKEN)],
-            [KeyboardButton(BTN_MISSED), KeyboardButton(BTN_STATS)],
-            [KeyboardButton(BTN_PLAN), KeyboardButton(BTN_CANCEL)],
+            [KeyboardButton(BTN_YESTERDAY), KeyboardButton(BTN_TODAY), KeyboardButton(BTN_TOMORROW)],
+            [KeyboardButton(BTN_TAKEN), KeyboardButton(BTN_MISSED)],
+            [KeyboardButton(BTN_STATS), KeyboardButton(BTN_PLAN)],
+            [KeyboardButton(BTN_CANCEL)],
         ],
         resize_keyboard=True,
     )
@@ -356,6 +359,78 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_text(update, "\n".join(lines))
 
 
+async def yesterday_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    settings: Settings = context.application.bot_data["settings"]
+    user = update.effective_user
+
+    if not user:
+        return
+
+    row = db.get_user(settings.db_path, user.id)
+    if not row:
+        await _reply_text(update, "Сначала запусти /start")
+        return
+
+    timezone_name = row["timezone"]
+    yesterday = datetime.now(ZoneInfo(timezone_name)) - timedelta(days=1)
+    day_number, day_start, day_end, rows = db.get_plan_day_doses(
+        settings.db_path,
+        user.id,
+        timezone_name,
+        yesterday,
+    )
+
+    if not rows:
+        await _reply_text(update, "Для вчерашних суток доз нет.")
+        return
+
+    lines = [
+        "Вчерашние сутки курса "
+        f"(день {day_number}): {day_start.strftime('%d.%m %H:%M')} - {day_end.strftime('%d.%m %H:%M')}"
+    ]
+    for dose in rows:
+        mark = "✅" if dose["taken_at_utc"] else "⏳"
+        lines.append(f"{mark} {_format_local(dose['scheduled_at_utc'], timezone_name)}")
+
+    await _reply_text(update, "\n".join(lines))
+
+
+async def tomorrow_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    settings: Settings = context.application.bot_data["settings"]
+    user = update.effective_user
+
+    if not user:
+        return
+
+    row = db.get_user(settings.db_path, user.id)
+    if not row:
+        await _reply_text(update, "Сначала запусти /start")
+        return
+
+    timezone_name = row["timezone"]
+    tomorrow = datetime.now(ZoneInfo(timezone_name)) + timedelta(days=1)
+    day_number, day_start, day_end, rows = db.get_plan_day_doses(
+        settings.db_path,
+        user.id,
+        timezone_name,
+        tomorrow,
+    )
+
+    if not rows:
+        await _reply_text(update, "Для завтрашних суток доз нет.")
+        return
+
+    lines = [
+        "Завтрашние сутки курса "
+        f"(день {day_number}): {day_start.strftime('%d.%m %H:%M')} - {day_end.strftime('%d.%m %H:%M')}"
+    ]
+    for dose in rows:
+        mark = "✅" if dose["taken_at_utc"] else "⏳"
+        lines.append(f"{mark} {_format_local(dose['scheduled_at_utc'], timezone_name)}")
+
+    await _reply_text(update, "\n".join(lines))
+
+
 async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings: Settings = context.application.bot_data["settings"]
     user = update.effective_user
@@ -566,6 +641,8 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("start", start_cmd))
     application.add_handler(CommandHandler("plan", confirm_plan_cmd))
     application.add_handler(CommandHandler("today", today_cmd))
+    application.add_handler(CommandHandler("yesterday", yesterday_cmd))
+    application.add_handler(CommandHandler("tomorrow", tomorrow_cmd))
     application.add_handler(CommandHandler("taken", confirm_taken_cmd))
     application.add_handler(CommandHandler("missed", confirm_missed_cmd))
     application.add_handler(CommandHandler("stats", stats_cmd))
@@ -573,6 +650,8 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("cancel", confirm_cancel_cmd))
 
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TODAY}$"), today_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_YESTERDAY}$"), yesterday_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TOMORROW}$"), tomorrow_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TAKEN}$"), taken_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_MISSED}$"), confirm_missed_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_STATS}$"), stats_cmd))

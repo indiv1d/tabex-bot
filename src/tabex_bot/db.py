@@ -321,6 +321,16 @@ def shift_day_schedule_by_first_taken(
             return 0
 
         updates: list[tuple[str, int]] = []
+        
+        # Update the first dose's scheduled time to match actual intake time
+        first_dose_utc = actual_first_local.astimezone(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE doses SET scheduled_at_utc = ? WHERE id = ?",
+            (first_dose_utc, day_rows[0]["id"]),
+        )
+        
+        # Shift remaining doses of the day
+        shifted_count = 0
         for row in day_rows[1:]:
             if row["taken_at_utc"] is not None:
                 continue
@@ -328,6 +338,7 @@ def shift_day_schedule_by_first_taken(
             old_local = _to_local(row["scheduled_at_utc"], timezone_name)
             new_local = old_local + shift
             updates.append((new_local.astimezone(timezone.utc).isoformat(), row["id"]))
+            shifted_count += 1
 
         if updates:
             conn.executemany(
@@ -335,4 +346,4 @@ def shift_day_schedule_by_first_taken(
                 updates,
             )
 
-        return len(updates)
+        return shifted_count

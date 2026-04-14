@@ -186,7 +186,7 @@ def mark_next_pending_taken(db_path: str, user_id: int, now_utc: datetime) -> sq
 def get_dose(db_path: str, dose_id: int) -> sqlite3.Row | None:
     with get_connection(db_path) as conn:
         return conn.execute(
-            "SELECT id, user_id, scheduled_at_utc, taken_at_utc FROM doses WHERE id = ?",
+            "SELECT id, user_id, scheduled_at_utc, taken_at_utc, reminded_at_utc FROM doses WHERE id = ?",
             (dose_id,),
         ).fetchone()
 
@@ -212,6 +212,22 @@ def mark_reminded(db_path: str, dose_id: int, reminded_at_utc: datetime) -> None
             "UPDATE doses SET reminded_at_utc = ? WHERE id = ?",
             (reminded_at_utc.astimezone(timezone.utc).isoformat(), dose_id),
         )
+
+
+def list_due_unreminded_doses(db_path: str, now_utc: datetime) -> list[sqlite3.Row]:
+    with get_connection(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT d.id, d.user_id, u.chat_id, u.timezone, d.scheduled_at_utc
+            FROM doses d
+            JOIN users u ON u.user_id = d.user_id
+            WHERE d.taken_at_utc IS NULL
+              AND d.reminded_at_utc IS NULL
+              AND d.scheduled_at_utc <= ?
+            ORDER BY d.scheduled_at_utc ASC
+            """,
+            (now_utc.astimezone(timezone.utc).isoformat(),),
+        ).fetchall()
 
 
 def get_missed_doses(db_path: str, user_id: int, now_utc: datetime) -> list[sqlite3.Row]:

@@ -96,7 +96,7 @@ async def reminder_job(context: CallbackContext) -> None:
     dose_id = payload["dose_id"]
 
     dose = db.get_dose(db_path, dose_id)
-    if not dose or dose["taken_at_utc"] is not None:
+    if not dose or dose["taken_at_utc"] is not None or dose["reminded_at_utc"] is not None:
         return
 
     keyboard = InlineKeyboardMarkup(
@@ -109,6 +109,28 @@ async def reminder_job(context: CallbackContext) -> None:
         reply_markup=keyboard,
     )
     db.mark_reminded(db_path, dose_id, datetime.now(timezone.utc))
+
+
+async def due_reminders_check_job(context: CallbackContext) -> None:
+    payload = context.job.data
+    db_path = payload["db_path"]
+    now_utc = datetime.now(timezone.utc)
+    due_rows = db.list_due_unreminded_doses(db_path, now_utc)
+
+    for row in due_rows:
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("Принял ✅", callback_data=f"take:{row['id']}")]]
+        )
+
+        await context.bot.send_message(
+            chat_id=row["chat_id"],
+            text=(
+                "Время приёма наступило. "
+                f"Запланировано на {_format_local(row['scheduled_at_utc'], row['timezone'])}."
+            ),
+            reply_markup=keyboard,
+        )
+        db.mark_reminded(db_path, row["id"], now_utc)
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -343,6 +365,14 @@ async def post_init(application: Application) -> None:
     pending = db.list_pending_doses(settings.db_path, from_utc=datetime.now(timezone.utc))
     for row in pending:
         _schedule_single_reminder(application, settings.db_path, row)
+
+    application.job_queue.run_repeating(
+        due_reminders_check_job,
+        interval=60,
+        first=0,
+        data={"db_path": settings.db_path},
+        name="due-reminders-check",
+    )
 
 
 def build_application() -> Application:

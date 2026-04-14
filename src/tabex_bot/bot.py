@@ -576,7 +576,7 @@ def build_application() -> Application:
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_MISSED}$"), confirm_missed_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_STATS}$"), stats_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_PLAN}$"), confirm_plan_cmd))
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), confirm_cancel_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), cancel_cmd))
 
     application.add_handler(CallbackQueryHandler(callback_confirm_command, pattern=r"^confirm:(ok|cancel):"))
     application.add_handler(CallbackQueryHandler(callback_take, pattern=r"^take:\d+$"))

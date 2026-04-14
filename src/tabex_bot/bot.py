@@ -574,7 +574,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("timezone", confirm_timezone_cmd))
     application.add_handler(CommandHandler("cancel", confirm_cancel_cmd))
     application.add_handler(CallbackQueryHandler(callback_confirm_command, pattern=r"^confirm:(ok|cancel):"))
-    application.add_handler(CallbackQueryHandler(callback_take, pattern=r"^take:\\d+$"))
+    application.add_handler(CallbackQueryHandler(callback_take, pattern=r"^take:\d+$"))
 
     return application
 

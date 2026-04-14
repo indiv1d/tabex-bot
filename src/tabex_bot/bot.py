@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -16,6 +22,17 @@ from telegram.ext import (
 from tabex_bot import db
 from tabex_bot.config import Settings
 from tabex_bot.schedule import build_tabex_schedule
+
+
+def _commands_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton("/today"), KeyboardButton("/taken")],
+            [KeyboardButton("/missed"), KeyboardButton("/stats")],
+            [KeyboardButton("/plan"), KeyboardButton("/cancel")],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def _parse_timezone(name: str) -> ZoneInfo:
@@ -112,7 +129,8 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/missed - показать пропущенные\n"
         "/stats - прогресс\n"
         "/timezone Europe/Moscow - часовой пояс\n"
-        "/cancel - удалить текущий план"
+        "/cancel - удалить текущий план",
+        reply_markup=_commands_keyboard(),
     )
 
 

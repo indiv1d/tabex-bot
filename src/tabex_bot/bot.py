@@ -303,7 +303,7 @@ async def plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         if len(raw) == 10:
-            parsed_start = parsed_start.replace(hour=8, minute=0)
+            parsed_start = parsed_start.replace(hour=11, minute=0)
         start_at_local = parsed_start.replace(tzinfo=timezone_obj)
     else:
         start_at_local = datetime.now(timezone_obj)

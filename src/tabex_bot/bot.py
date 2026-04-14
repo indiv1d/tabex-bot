@@ -35,8 +35,6 @@ BTN_TOMORROW = "Завтра"
 BTN_TAKEN = "Отметить приём"
 BTN_MISSED = "Пропущенные"
 BTN_STATS = "Статистика"
-BTN_PLAN = "Новый план"
-BTN_CANCEL = "Удалить план"
 
 
 def _commands_keyboard() -> ReplyKeyboardMarkup:
@@ -44,8 +42,7 @@ def _commands_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(BTN_YESTERDAY), KeyboardButton(BTN_TODAY), KeyboardButton(BTN_TOMORROW)],
             [KeyboardButton(BTN_TAKEN), KeyboardButton(BTN_MISSED)],
-            [KeyboardButton(BTN_STATS), KeyboardButton(BTN_PLAN)],
-            [KeyboardButton(BTN_CANCEL)],
+            [KeyboardButton(BTN_STATS)],
         ],
         resize_keyboard=True,
     )
@@ -655,8 +652,6 @@ def build_application() -> Application:
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TAKEN}$"), taken_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_MISSED}$"), confirm_missed_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_STATS}$"), stats_cmd))
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_PLAN}$"), confirm_plan_cmd))
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), cancel_cmd))
 
     application.add_handler(CallbackQueryHandler(callback_confirm_command, pattern=r"^confirm:(ok|cancel):"))
     application.add_handler(CallbackQueryHandler(callback_take, pattern=r"^take:\d+$"))

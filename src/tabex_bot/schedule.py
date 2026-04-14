@@ -20,22 +20,20 @@ def _parse_hhmm(value: str) -> time:
 
 
 def build_tabex_schedule(start_at_local: datetime, timezone: ZoneInfo) -> list[datetime]:
-    """Builds the 25-day Tabex plan anchored to the first pill time."""
+    """Builds the 25-day Tabex plan based on calendar dates."""
     if start_at_local.tzinfo is None:
         start_at_local = start_at_local.replace(tzinfo=timezone)
     else:
         start_at_local = start_at_local.astimezone(timezone)
 
-    baseline = datetime.combine(start_at_local.date(), time(hour=8, minute=0), tzinfo=timezone)
-    shift = start_at_local - baseline
-
+    start_date = start_at_local.date()
     schedule: list[datetime] = []
 
     for day_start, day_end, times in TABEX_DAY_TIMES:
         for day_number in range(day_start, day_end + 1):
-            current_date = start_at_local.date() + timedelta(days=day_number - 1)
+            current_date = start_date + timedelta(days=day_number - 1)
             for hhmm in times:
-                local_dt = datetime.combine(current_date, _parse_hhmm(hhmm), tzinfo=timezone) + shift
+                local_dt = datetime.combine(current_date, _parse_hhmm(hhmm), tzinfo=timezone)
                 schedule.append(local_dt)
 
     schedule.sort()

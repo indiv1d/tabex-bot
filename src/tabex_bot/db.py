@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -116,13 +116,16 @@ def get_plan_day_doses(
         return 0, now_local, now_local, []
 
     first_local = _to_local(rows[0]["scheduled_at_utc"], timezone_name)
-    if now_local < first_local:
+    first_date = first_local.date()
+    now_date = now_local.date()
+    
+    # Calculate day number based on calendar date difference
+    day_number = (now_date - first_date).days + 1
+    if day_number < 1:
         day_number = 1
-    else:
-        delta = now_local - first_local
-        day_number = int(delta.total_seconds() // 86400) + 1
 
-    day_start = first_local + timedelta(days=day_number - 1)
+    # Day boundaries are at midnight (00:00) on calendar dates
+    day_start = datetime.combine(now_date, time(0, 0), tzinfo=ZoneInfo(timezone_name))
     day_end = day_start + timedelta(days=1)
 
     result: list[sqlite3.Row] = []
@@ -286,8 +289,10 @@ def shift_day_schedule_by_first_taken(
         if target_local < first_local:
             return 0
 
-        day_number = int((target_local - first_local).total_seconds() // 86400) + 1
-        day_start = first_local + timedelta(days=day_number - 1)
+        # Calculate day based on calendar dates
+        first_date = first_local.date()
+        target_date = target_local.date()
+        day_start = datetime.combine(target_date, time(0, 0), tzinfo=ZoneInfo(timezone_name))
         day_end = day_start + timedelta(days=1)
 
         day_rows = [

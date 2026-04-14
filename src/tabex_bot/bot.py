@@ -572,7 +572,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("cancel", confirm_cancel_cmd))
 
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TODAY}$"), today_cmd))
-    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TAKEN}$"), confirm_taken_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TAKEN}$"), taken_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_MISSED}$"), confirm_missed_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_STATS}$"), stats_cmd))
     application.add_handler(MessageHandler(filters.Regex(f"^{BTN_PLAN}$"), confirm_plan_cmd))

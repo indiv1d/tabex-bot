@@ -1,0 +1,15 @@
+services:
+  tabex-bot:
+    build: .
+    image: tabex-telegram-bot:latest
+    container_name: tabex-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      BOT_DB_PATH: /app/data/tabex.db
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  tabex_bot_data:

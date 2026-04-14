@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telegram import (
@@ -24,6 +25,9 @@ from tabex_bot.config import Settings
 from tabex_bot.schedule import build_tabex_schedule
 
 
+CommandExecutor = Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[None]]
+
+
 def _commands_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -33,6 +37,67 @@ def _commands_keyboard() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True,
     )
+
+
+async def _reply_text(update: Update, text: str, **kwargs) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+    await message.reply_text(text, **kwargs)
+
+
+async def _request_command_confirmation(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    command_name: str,
+) -> None:
+    user = update.effective_user
+    if user is None:
+        return
+
+    context.user_data["pending_command"] = {
+        "name": command_name,
+        "args": list(context.args),
+    }
+    keyboard = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Подтвердить", callback_data=f"confirm:ok:{command_name}")],
+            [InlineKeyboardButton("Отмена", callback_data=f"confirm:cancel:{command_name}")],
+        ]
+    )
+    await _reply_text(update, f"Подтвердить выполнение /{command_name}?", reply_markup=keyboard)
+
+
+async def confirm_start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "start")
+
+
+async def confirm_plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "plan")
+
+
+async def confirm_today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "today")
+
+
+async def confirm_taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "taken")
+
+
+async def confirm_missed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "missed")
+
+
+async def confirm_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "stats")
+
+
+async def confirm_timezone_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "timezone")
+
+
+async def confirm_cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _request_command_confirmation(update, context, "cancel")
 
 
 def _parse_timezone(name: str) -> ZoneInfo:
@@ -164,7 +229,8 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     db.upsert_user(settings.db_path, user.id, chat.id)
-    await update.message.reply_text(
+    await _reply_text(
+        update,
         "Привет! Я помогу отслеживать приём Tabex.\n\n"
         "Команды:\n"
         "/plan [YYYY-MM-DD HH:MM] - создать 25-дневный график\n"
@@ -188,18 +254,18 @@ async def timezone_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not context.args:
         row = db.get_user(settings.db_path, user.id)
         zone = row["timezone"] if row else "Europe/Moscow"
-        await update.message.reply_text(f"Текущий часовой пояс: {zone}")
+        await _reply_text(update, f"Текущий часовой пояс: {zone}")
         return
 
     zone_name = context.args[0].strip()
     try:
         _parse_timezone(zone_name)
     except ValueError:
-        await update.message.reply_text("Неизвестный часовой пояс. Пример: Europe/Moscow")
+        await _reply_text(update, "Неизвестный часовой пояс. Пример: Europe/Moscow")
         return
 
     db.set_user_timezone(settings.db_path, user.id, zone_name)
-    await update.message.reply_text(f"Часовой пояс обновлён: {zone_name}")
+    await _reply_text(update, f"Часовой пояс обновлён: {zone_name}")
 
 
 async def plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -225,7 +291,7 @@ async def plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             except ValueError:
                 continue
         if parsed_start is None:
-            await update.message.reply_text("Неверный формат. Используй /plan или /plan YYYY-MM-DD HH:MM")
+            await _reply_text(update, "Неверный формат. Используй /plan или /plan YYYY-MM-DD HH:MM")
             return
 
         if len(raw) == 10:
@@ -238,7 +304,8 @@ async def plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     count = db.set_plan(settings.db_path, user.id, start_at_local, schedule)
     _reschedule_user(context.application, settings.db_path, user.id)
 
-    await update.message.reply_text(
+    await _reply_text(
+        update,
         "График создан. "
         f"Всего доз: {count}. "
         f"Первая таблетка: {start_at_local.strftime('%Y-%m-%d %H:%M')} ({timezone_name})."
@@ -254,7 +321,7 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     row = db.get_user(settings.db_path, user.id)
     if not row:
-        await update.message.reply_text("Сначала запусти /start")
+        await _reply_text(update, "Сначала запусти /start")
         return
 
     timezone_name = row["timezone"]
@@ -267,7 +334,7 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
     if not rows:
-        await update.message.reply_text("Для текущих суток курса доз нет. Используй /plan")
+        await _reply_text(update, "Для текущих суток курса доз нет. Используй /plan")
         return
 
     lines = [
@@ -278,7 +345,7 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         mark = "✅" if dose["taken_at_utc"] else "⏳"
         lines.append(f"{mark} {_format_local(dose['scheduled_at_utc'], timezone_name)}")
 
-    await update.message.reply_text("\n".join(lines))
+    await _reply_text(update, "\n".join(lines))
 
 
 async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -294,7 +361,8 @@ async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if context.args:
         taken_local = _parse_taken_at_local(" ".join(context.args), timezone_name)
         if taken_local is None:
-            await update.message.reply_text(
+            await _reply_text(
+                update,
                 "Неверный формат времени. Используй /taken, /taken HH:MM или /taken YYYY-MM-DD HH:MM"
             )
             return
@@ -304,7 +372,7 @@ async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     row = db.mark_next_pending_taken(settings.db_path, user.id, now_utc)
     if not row:
-        await update.message.reply_text("Нет доз для отметки. Возможно план не создан.")
+        await _reply_text(update, "Нет доз для отметки. Возможно план не создан.")
         return
 
     shifted = db.shift_day_schedule_by_first_taken(
@@ -317,7 +385,8 @@ async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if shifted > 0:
         _reschedule_user(context.application, settings.db_path, user.id)
 
-    await update.message.reply_text(
+    await _reply_text(
+        update,
         f"Отмечено как принято: {_format_local(row['scheduled_at_utc'], timezone_name)}"
     )
 
@@ -331,21 +400,21 @@ async def missed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     user_row = db.get_user(settings.db_path, user.id)
     if not user_row:
-        await update.message.reply_text("Сначала запусти /start")
+        await _reply_text(update, "Сначала запусти /start")
         return
 
     timezone_name = user_row["timezone"]
     rows = db.get_missed_doses(settings.db_path, user.id, datetime.now(timezone.utc))
 
     if not rows:
-        await update.message.reply_text("Пропущенных доз нет.")
+        await _reply_text(update, "Пропущенных доз нет.")
         return
 
     lines = ["Пропущенные дозы:"]
     for row in rows[:20]:
         lines.append(f"- {_format_local(row['scheduled_at_utc'], timezone_name)}")
 
-    await update.message.reply_text("\n".join(lines))
+    await _reply_text(update, "\n".join(lines))
 
 
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -357,11 +426,11 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     taken, total = db.get_stats(settings.db_path, user.id)
     if total == 0:
-        await update.message.reply_text("План не создан. Используй /plan")
+        await _reply_text(update, "План не создан. Используй /plan")
         return
 
     progress = (taken / total) * 100
-    await update.message.reply_text(f"Принято {taken}/{total} ({progress:.1f}%).")
+    await _reply_text(update, f"Принято {taken}/{total} ({progress:.1f}%).")
 
 
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -373,7 +442,56 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     db.clear_plan(settings.db_path, user.id)
     _remove_user_jobs(context.application, user.id)
-    await update.message.reply_text("План удалён.")
+    await _reply_text(update, "План удалён.")
+
+
+async def callback_confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data:
+        return
+
+    await query.answer()
+    parts = query.data.split(":", 2)
+    if len(parts) != 3:
+        return
+    action, command_name = parts[1], parts[2]
+
+    pending = context.user_data.get("pending_command")
+    if not pending or pending.get("name") != command_name:
+        await query.edit_message_text("Подтверждение устарело. Повтори команду.")
+        return
+
+    if action == "cancel":
+        context.user_data.pop("pending_command", None)
+        await query.edit_message_text(f"Команда /{command_name} отменена.")
+        return
+
+    handlers: dict[str, CommandExecutor] = {
+        "start": start_cmd,
+        "plan": plan_cmd,
+        "today": today_cmd,
+        "taken": taken_cmd,
+        "missed": missed_cmd,
+        "stats": stats_cmd,
+        "timezone": timezone_cmd,
+        "cancel": cancel_cmd,
+    }
+    handler = handlers.get(command_name)
+    if handler is None:
+        context.user_data.pop("pending_command", None)
+        await query.edit_message_text("Неизвестная команда.")
+        return
+
+    pending_args = pending.get("args", [])
+    context.user_data.pop("pending_command", None)
+    original_args = list(context.args)
+    context.args = list(pending_args)
+    try:
+        await handler(update, context)
+    finally:
+        context.args = original_args
+
+    await query.edit_message_text(f"Команда /{command_name} подтверждена.")
 
 
 async def callback_take(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -437,14 +555,15 @@ def build_application() -> Application:
     application = ApplicationBuilder().token(settings.bot_token).post_init(post_init).build()
     application.bot_data["settings"] = settings
 
-    application.add_handler(CommandHandler("start", start_cmd))
-    application.add_handler(CommandHandler("plan", plan_cmd))
-    application.add_handler(CommandHandler("today", today_cmd))
-    application.add_handler(CommandHandler("taken", taken_cmd))
-    application.add_handler(CommandHandler("missed", missed_cmd))
-    application.add_handler(CommandHandler("stats", stats_cmd))
-    application.add_handler(CommandHandler("timezone", timezone_cmd))
-    application.add_handler(CommandHandler("cancel", cancel_cmd))
+    application.add_handler(CommandHandler("start", confirm_start_cmd))
+    application.add_handler(CommandHandler("plan", confirm_plan_cmd))
+    application.add_handler(CommandHandler("today", confirm_today_cmd))
+    application.add_handler(CommandHandler("taken", confirm_taken_cmd))
+    application.add_handler(CommandHandler("missed", confirm_missed_cmd))
+    application.add_handler(CommandHandler("stats", confirm_stats_cmd))
+    application.add_handler(CommandHandler("timezone", confirm_timezone_cmd))
+    application.add_handler(CommandHandler("cancel", confirm_cancel_cmd))
+    application.add_handler(CallbackQueryHandler(callback_confirm_command, pattern=r"^confirm:(ok|cancel):"))
     application.add_handler(CallbackQueryHandler(callback_take, pattern=r"^take:\\d+$"))
 
     return application

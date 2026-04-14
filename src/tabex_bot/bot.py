@@ -39,6 +39,13 @@ def _commands_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def _command_args(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
+    pending_args = context.user_data.get("_confirmed_args")
+    if pending_args is not None:
+        return list(pending_args)
+    return list(context.args)
+
+
 async def _reply_text(update: Update, text: str, **kwargs) -> None:
     message = update.effective_message
     if message is None:
@@ -251,13 +258,15 @@ async def timezone_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not user:
         return
 
-    if not context.args:
+    args = _command_args(context)
+
+    if not args:
         row = db.get_user(settings.db_path, user.id)
         zone = row["timezone"] if row else "Europe/Moscow"
         await _reply_text(update, f"Текущий часовой пояс: {zone}")
         return
 
-    zone_name = context.args[0].strip()
+    zone_name = args[0].strip()
     try:
         _parse_timezone(zone_name)
     except ValueError:
@@ -281,8 +290,9 @@ async def plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     timezone_name = row["timezone"] if row else "Europe/Moscow"
     timezone_obj = ZoneInfo(timezone_name)
 
-    if context.args:
-        raw = " ".join(context.args).strip()
+    args = _command_args(context)
+    if args:
+        raw = " ".join(args).strip()
         parsed_start: datetime | None = None
         for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
             try:
@@ -358,8 +368,9 @@ async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_row = db.get_user(settings.db_path, user.id)
     timezone_name = user_row["timezone"] if user_row else "Europe/Moscow"
 
-    if context.args:
-        taken_local = _parse_taken_at_local(" ".join(context.args), timezone_name)
+    args = _command_args(context)
+    if args:
+        taken_local = _parse_taken_at_local(" ".join(args), timezone_name)
         if taken_local is None:
             await _reply_text(
                 update,
@@ -484,12 +495,11 @@ async def callback_confirm_command(update: Update, context: ContextTypes.DEFAULT
 
     pending_args = pending.get("args", [])
     context.user_data.pop("pending_command", None)
-    original_args = list(context.args)
-    context.args = list(pending_args)
+    context.user_data["_confirmed_args"] = list(pending_args)
     try:
         await handler(update, context)
     finally:
-        context.args = original_args
+        context.user_data.pop("_confirmed_args", None)
 
     await query.edit_message_text(f"Команда /{command_name} подтверждена.")
 

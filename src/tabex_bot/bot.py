@@ -50,6 +50,28 @@ def _format_local(utc_iso: str, timezone_name: str) -> str:
     return local_dt.strftime("%d.%m %H:%M")
 
 
+def _parse_taken_at_local(raw: str, timezone_name: str) -> datetime | None:
+    zone = ZoneInfo(timezone_name)
+    now_local = datetime.now(zone)
+    value = raw.strip()
+
+    # HH:MM means "today at HH:MM" in user's timezone.
+    try:
+        hhmm = datetime.strptime(value, "%H:%M")
+        return now_local.replace(hour=hhmm.hour, minute=hhmm.minute, second=0, microsecond=0)
+    except ValueError:
+        pass
+
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
+        try:
+            parsed = datetime.strptime(value, fmt)
+            return parsed.replace(tzinfo=zone)
+        except ValueError:
+            continue
+
+    return None
+
+
 def _job_name_for_dose(dose_id: int) -> str:
     return f"dose:{dose_id}"
 
@@ -147,7 +169,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Команды:\n"
         "/plan [YYYY-MM-DD HH:MM] - создать 25-дневный график\n"
         "/today - дозы на текущие сутки курса\n"
-        "/taken - отметить приём\n"
+        "/taken [HH:MM] - отметить приём\n"
         "/missed - показать пропущенные\n"
         "/stats - прогресс\n"
         "/timezone Europe/Moscow - часовой пояс\n"
@@ -266,14 +288,35 @@ async def taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not user:
         return
 
-    now_utc = datetime.now(timezone.utc)
+    user_row = db.get_user(settings.db_path, user.id)
+    timezone_name = user_row["timezone"] if user_row else "Europe/Moscow"
+
+    if context.args:
+        taken_local = _parse_taken_at_local(" ".join(context.args), timezone_name)
+        if taken_local is None:
+            await update.message.reply_text(
+                "Неверный формат времени. Используй /taken, /taken HH:MM или /taken YYYY-MM-DD HH:MM"
+            )
+            return
+        now_utc = taken_local.astimezone(timezone.utc)
+    else:
+        now_utc = datetime.now(timezone.utc)
+
     row = db.mark_next_pending_taken(settings.db_path, user.id, now_utc)
     if not row:
         await update.message.reply_text("Нет доз для отметки. Возможно план не создан.")
         return
 
-    user_row = db.get_user(settings.db_path, user.id)
-    timezone_name = user_row["timezone"] if user_row else "Europe/Moscow"
+    shifted = db.shift_day_schedule_by_first_taken(
+        settings.db_path,
+        user.id,
+        row["id"],
+        timezone_name,
+        now_utc,
+    )
+    if shifted > 0:
+        _reschedule_user(context.application, settings.db_path, user.id)
+
     await update.message.reply_text(
         f"Отмечено как принято: {_format_local(row['scheduled_at_utc'], timezone_name)}"
     )
@@ -353,8 +396,20 @@ async def callback_take(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await query.answer("Эта кнопка не для вас", show_alert=True)
         return
 
-    changed = db.mark_dose_taken(settings.db_path, dose_id, datetime.now(timezone.utc))
+    now_utc = datetime.now(timezone.utc)
+    changed = db.mark_dose_taken(settings.db_path, dose_id, now_utc)
     if changed:
+        user_row = db.get_user(settings.db_path, dose["user_id"])
+        timezone_name = user_row["timezone"] if user_row else "Europe/Moscow"
+        shifted = db.shift_day_schedule_by_first_taken(
+            settings.db_path,
+            dose["user_id"],
+            dose_id,
+            timezone_name,
+            now_utc,
+        )
+        if shifted > 0:
+            _reschedule_user(context.application, settings.db_path, dose["user_id"])
         await query.edit_message_text("Отмечено: таблетка принята ✅")
     else:
         await query.edit_message_text("Эта доза уже была отмечена ранее.")

@@ -253,3 +253,76 @@ def get_stats(db_path: str, user_id: int) -> tuple[int, int]:
             (user_id,),
         ).fetchone()[0]
     return int(taken), int(total)
+
+
+def shift_day_schedule_by_first_taken(
+    db_path: str,
+    user_id: int,
+    first_day_dose_id: int,
+    timezone_name: str,
+    taken_at_utc: datetime,
+) -> int:
+    """Shifts remaining doses of the same plan-day by actual first dose time.
+
+    The shift is applied only when the taken dose is the first scheduled dose
+    in that plan-day window.
+    """
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, scheduled_at_utc, taken_at_utc FROM doses WHERE user_id = ? ORDER BY scheduled_at_utc",
+            (user_id,),
+        ).fetchall()
+
+        if not rows:
+            return 0
+
+        indexed = {row["id"]: row for row in rows}
+        target = indexed.get(first_day_dose_id)
+        if target is None:
+            return 0
+
+        first_local = _to_local(rows[0]["scheduled_at_utc"], timezone_name)
+        target_local = _to_local(target["scheduled_at_utc"], timezone_name)
+        if target_local < first_local:
+            return 0
+
+        day_number = int((target_local - first_local).total_seconds() // 86400) + 1
+        day_start = first_local + timedelta(days=day_number - 1)
+        day_end = day_start + timedelta(days=1)
+
+        day_rows = [
+            row
+            for row in rows
+            if day_start <= _to_local(row["scheduled_at_utc"], timezone_name) < day_end
+        ]
+        if not day_rows:
+            return 0
+
+        # Only shift if the just-taken dose is the first scheduled dose of that day.
+        day_rows.sort(key=lambda r: r["scheduled_at_utc"])
+        if day_rows[0]["id"] != first_day_dose_id:
+            return 0
+
+        planned_first_local = _to_local(day_rows[0]["scheduled_at_utc"], timezone_name)
+        actual_first_local = taken_at_utc.astimezone(ZoneInfo(timezone_name))
+        shift = actual_first_local - planned_first_local
+
+        if shift.total_seconds() == 0:
+            return 0
+
+        updates: list[tuple[str, int]] = []
+        for row in day_rows[1:]:
+            if row["taken_at_utc"] is not None:
+                continue
+
+            old_local = _to_local(row["scheduled_at_utc"], timezone_name)
+            new_local = old_local + shift
+            updates.append((new_local.astimezone(timezone.utc).isoformat(), row["id"]))
+
+        if updates:
+            conn.executemany(
+                "UPDATE doses SET scheduled_at_utc = ?, reminded_at_utc = NULL WHERE id = ?",
+                updates,
+            )
+
+        return len(updates)

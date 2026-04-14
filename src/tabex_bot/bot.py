@@ -84,16 +84,8 @@ async def _request_command_confirmation(
     await _reply_text(update, f"Подтвердить выполнение /{command_name}?", reply_markup=keyboard)
 
 
-async def confirm_start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _request_command_confirmation(update, context, "start")
-
-
 async def confirm_plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _request_command_confirmation(update, context, "plan")
-
-
-async def confirm_today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _request_command_confirmation(update, context, "today")
 
 
 async def confirm_taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -102,10 +94,6 @@ async def confirm_taken_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def confirm_missed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _request_command_confirmation(update, context, "missed")
-
-
-async def confirm_stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _request_command_confirmation(update, context, "stats")
 
 
 async def confirm_timezone_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -574,7 +562,7 @@ def build_application() -> Application:
     application = ApplicationBuilder().token(settings.bot_token).post_init(post_init).build()
     application.bot_data["settings"] = settings
 
-    application.add_handler(CommandHandler("start", confirm_start_cmd))
+    application.add_handler(CommandHandler("start", start_cmd))
     application.add_handler(CommandHandler("plan", confirm_plan_cmd))
     application.add_handler(CommandHandler("today", today_cmd))
     application.add_handler(CommandHandler("taken", confirm_taken_cmd))

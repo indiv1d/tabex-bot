@@ -308,8 +308,13 @@ def shift_day_schedule_by_first_taken(
         if day_rows[0]["id"] != first_day_dose_id:
             return 0
 
+        # Only apply shift if the actual intake was on the same calendar day
         planned_first_local = _to_local(day_rows[0]["scheduled_at_utc"], timezone_name)
         actual_first_local = taken_at_utc.astimezone(ZoneInfo(timezone_name))
+        
+        if planned_first_local.date() != actual_first_local.date():
+            return 0
+        
         shift = actual_first_local - planned_first_local
 
         if shift.total_seconds() == 0:

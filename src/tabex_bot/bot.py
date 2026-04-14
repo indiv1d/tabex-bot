@@ -52,7 +52,8 @@ def _command_args(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
     pending_args = context.user_data.get("_confirmed_args")
     if pending_args is not None:
         return list(pending_args)
-    return list(context.args)
+    args = getattr(context, 'args', None)
+    return list(args) if args else []
 
 
 async def _reply_text(update: Update, text: str, **kwargs) -> None:

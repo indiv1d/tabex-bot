@@ -18,6 +18,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 from tabex_bot import db
@@ -27,13 +29,20 @@ from tabex_bot.schedule import build_tabex_schedule
 
 CommandExecutor = Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[None]]
 
+BTN_TODAY = "Сегодня"
+BTN_TAKEN = "Отметить приём"
+BTN_MISSED = "Пропущенные"
+BTN_STATS = "Статистика"
+BTN_PLAN = "Новый план"
+BTN_CANCEL = "Удалить план"
+
 
 def _commands_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton("/today"), KeyboardButton("/taken")],
-            [KeyboardButton("/missed"), KeyboardButton("/stats")],
-            [KeyboardButton("/plan"), KeyboardButton("/cancel")],
+            [KeyboardButton(BTN_TODAY), KeyboardButton(BTN_TAKEN)],
+            [KeyboardButton(BTN_MISSED), KeyboardButton(BTN_STATS)],
+            [KeyboardButton(BTN_PLAN), KeyboardButton(BTN_CANCEL)],
         ],
         resize_keyboard=True,
     )
@@ -567,12 +576,20 @@ def build_application() -> Application:
 
     application.add_handler(CommandHandler("start", confirm_start_cmd))
     application.add_handler(CommandHandler("plan", confirm_plan_cmd))
-    application.add_handler(CommandHandler("today", confirm_today_cmd))
+    application.add_handler(CommandHandler("today", today_cmd))
     application.add_handler(CommandHandler("taken", confirm_taken_cmd))
     application.add_handler(CommandHandler("missed", confirm_missed_cmd))
-    application.add_handler(CommandHandler("stats", confirm_stats_cmd))
+    application.add_handler(CommandHandler("stats", stats_cmd))
     application.add_handler(CommandHandler("timezone", confirm_timezone_cmd))
     application.add_handler(CommandHandler("cancel", confirm_cancel_cmd))
+
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TODAY}$"), today_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_TAKEN}$"), confirm_taken_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_MISSED}$"), confirm_missed_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_STATS}$"), stats_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_PLAN}$"), confirm_plan_cmd))
+    application.add_handler(MessageHandler(filters.Regex(f"^{BTN_CANCEL}$"), confirm_cancel_cmd))
+
     application.add_handler(CallbackQueryHandler(callback_confirm_command, pattern=r"^confirm:(ok|cancel):"))
     application.add_handler(CallbackQueryHandler(callback_take, pattern=r"^take:\d+$"))
 
